@@ -1,0 +1,16 @@
+alpaca:
+  API_KEY: "your_api_key_here"
+  SECRET_KEY: "your_secret_key_here"
+  BASE_URL: "https://paper-api.alpaca.markets"
+
+database:
+  host: "localhost"
+  user: "trading_bot"
+  password: "db_password"
+  database: "trading_logs"
+
+trading:
+  symbols: ["AAPL", "MSFT", "GOOGL"]
+  timeframe: "15Min"
+  initial_balance: 200000
+  risk_per_trade: 0.01
