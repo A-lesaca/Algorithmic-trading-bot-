@@ -1,7 +1,7 @@
 alpaca:
-  API_KEY: "your_api_key_here"
-  SECRET_KEY: "your_secret_key_here"
-  BASE_URL: "https://paper-api.alpaca.markets"
+  API_KEY: PKR3MGOKBHSR4RS8J17Q
+  SECRET_KEY: kjuKItCpKgOy2HcrdEtUzJnaDgoHaQrXozLpI95P
+  BASE_URL: https://paper-api.alpaca.markets/v2
 
 database:
   url: "postgresql://trading_bot:password@localhost/your_database_name"
