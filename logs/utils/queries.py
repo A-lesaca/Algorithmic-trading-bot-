@@ -1,5 +1,5 @@
 from datetime import datetime
-from logs.data.db_models import Trade
+from logs.utils.db_models import Trade
 
 def log_trade(session, symbol, entry_price, quantity, strategy):
     trade = Trade(

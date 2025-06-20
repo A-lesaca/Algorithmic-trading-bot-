@@ -1,5 +1,3 @@
-import os
-import yaml
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime
@@ -19,13 +17,8 @@ class Trade(Base):
     strategy = Column(String, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
-def init_db(config_path):
+def init_db(db_url: str):
     """Initializes DB connection and returns a session."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-
-    db_url = config['database']['url']
-
     engine = create_engine(db_url)
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
