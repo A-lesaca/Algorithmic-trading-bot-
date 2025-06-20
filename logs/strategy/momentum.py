@@ -1,12 +1,23 @@
+import os
+import sys
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
-from datetime import datetime, timedelta
+import yaml
+from typing import Dict, Optional, List
+from datetime import datetime
 import logging
-from ..utils.indicators import calculate_rsi, calculate_macd
-from ..utils.risk_management import calculate_position_size
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+
+from logs.utils.indicators import calculate_rsi, calculate_macd
+from logs.utils.risk_management import calculate_position_size
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 class MomentumStrategy:
@@ -21,7 +32,6 @@ class MomentumStrategy:
         logger.info("Momentum strategy initialized")
 
     def calculate_signals(self, symbol: str) -> Optional[Dict]:
-        """Calculate trading signals for a symbol"""
         try:
             data = self.client.get_historical_data(symbol, self.timeframe, 100)
             if not data:
@@ -31,29 +41,25 @@ class MomentumStrategy:
             df['date'] = pd.to_datetime(df['time'])
             df.set_index('date', inplace=True)
 
-            # Calculate indicators
+            # Indicators
             df['rsi'] = calculate_rsi(df['close'], 14)
             df['macd'], df['signal'] = calculate_macd(df['close'])
 
-            # Generate signals
             last_row = df.iloc[-1]
             prev_row = df.iloc[-2]
 
             signal = None
             reason = []
 
-            # Momentum entry conditions
             if (last_row['rsi'] > 50 and prev_row['rsi'] <= 50 and
                     last_row['macd'] > last_row['signal'] and prev_row['macd'] <= prev_row['signal']):
                 signal = 'buy'
-                reason.append('RSI crossed above 50')
-                reason.append('MACD crossed above signal line')
+                reason.extend(['RSI > 50', 'MACD crossover'])
 
             elif (last_row['rsi'] < 50 and prev_row['rsi'] >= 50 and
                   last_row['macd'] < last_row['signal'] and prev_row['macd'] >= prev_row['signal']):
                 signal = 'sell'
-                reason.append('RSI crossed below 50')
-                reason.append('MACD crossed below signal line')
+                reason.extend(['RSI < 50', 'MACD crossunder'])
 
             if signal:
                 return {
@@ -66,11 +72,10 @@ class MomentumStrategy:
             return None
 
         except Exception as e:
-            logger.error(f"Error calculating signals for {symbol}: {e}")
+            logger.error(f"Signal calculation error for {symbol}: {e}")
             return None
 
     def execute(self) -> List[Dict]:
-        """Execute trades based on signals"""
         trades = []
         for symbol in self.symbols:
             signal = self.calculate_signals(symbol)
@@ -98,3 +103,7 @@ class MomentumStrategy:
                             'reason': signal['reason']
                         })
         return trades
+
+
+if __name__ == "__main__":
+    print("This module is meant to be imported as part of the trading bot, not run directly.")

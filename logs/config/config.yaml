@@ -4,13 +4,13 @@ alpaca:
   BASE_URL: "https://paper-api.alpaca.markets"
 
 database:
-  host: "localhost"
-  user: "trading_bot"
-  password: "db_password"
-  database: "trading_logs"
+  url: "postgresql://trading_bot:password@localhost/your_database_name"
 
 trading:
-  symbols: ["AAPL", "MSFT", "GOOGL"]
+  symbols:
+    - "AAPL"
+    - "MSFT"
+    - "GOOGL"
   timeframe: "15Min"
   initial_balance: 200000
   risk_per_trade: 0.01
