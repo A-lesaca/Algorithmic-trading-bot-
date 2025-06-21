@@ -7,10 +7,8 @@ database:
   url: "mysql+pymysql://trading_user:your_password@localhost:3306/trading_bot"
 
 trading:
-  symbols:
-    - "AAPL"
-    - "MSFT"
-    - "GOOGL"
-  timeframe: "15Min"
-  initial_balance: 200000
-  risk_per_trade: 0.01
+  symbols: ["AAPL", "MSFT", "TSLA"]
+  max_positions: 3
+  risk_percent: 0.01
+  rsi_period: 14
+  rsi_threshold: 30

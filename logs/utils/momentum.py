@@ -1,108 +1,80 @@
-import os
-import sys
-import numpy as np
+from typing import List
 import pandas as pd
-import yaml
-from typing import Dict, Optional, List
-from datetime import datetime
+from alpaca_client import AlpacaClient
+from db_models import Trade
 import logging
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-from logs.utils.indicators import calculate_rsi, calculate_macd
-from logs.utils.risk_management import calculate_position_size
-
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
 
 
 class MomentumStrategy:
-    def __init__(self, client, config: Dict):
+    def __init__(self, client: AlpacaClient, config: dict):
         self.client = client
-        self.config = config  # ✅ Already a dictionary, no need to open a file
-        self.symbols = self.config['symbols']
-        self.timeframe = self.config['timeframe']
-        self.risk_per_trade = self.config['risk_per_trade']
-        self.account_balance = float(self.client.account.equity)
-        logger.info("Momentum strategy initialized")
+        self.config = config
+        self.max_positions = config.get('max_positions', 5)
+        self.rsi_period = config.get('rsi_period', 14)
+        self.rsi_threshold = config.get('rsi_threshold', 30)  # oversold threshold
 
-    def calculate_signals(self, symbol: str) -> Optional[Dict]:
-        try:
-            data = self.client.get_historical_data(symbol, self.timeframe, 100)
-            if not data:
-                return None
+    def calculate_rsi(self, prices: pd.Series) -> pd.Series:
+        delta = prices.diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+        avg_gain = gain.rolling(self.rsi_period).mean()
+        avg_loss = loss.rolling(self.rsi_period).mean()
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
 
-            df = pd.DataFrame(data)
-            df['date'] = pd.to_datetime(df['time'])
-            df.set_index('date', inplace=True)
+    def calculate_position_size(self, account_balance, risk_percent, entry_price, stop_loss_price):
+        risk_per_share = abs(entry_price - stop_loss_price)
+        risk_amount = account_balance * risk_percent
+        position_size = risk_amount / risk_per_share
+        return int(position_size) if position_size > 0 else 0
 
-            # Indicators
-            df['rsi'] = calculate_rsi(df['close'], 14)
-            df['macd'], df['signal'] = calculate_macd(df['close'])
-
-            last_row = df.iloc[-1]
-            prev_row = df.iloc[-2]
-
-            signal = None
-            reason = []
-
-            if (last_row['rsi'] > 50 and prev_row['rsi'] <= 50 and
-                    last_row['macd'] > last_row['signal'] and prev_row['macd'] <= prev_row['signal']):
-                signal = 'buy'
-                reason.extend(['RSI > 50', 'MACD crossover'])
-
-            elif (last_row['rsi'] < 50 and prev_row['rsi'] >= 50 and
-                  last_row['macd'] < last_row['signal'] and prev_row['macd'] >= prev_row['signal']):
-                signal = 'sell'
-                reason.extend(['RSI < 50', 'MACD crossunder'])
-
-            if signal:
-                return {
-                    'symbol': symbol,
-                    'signal': signal,
-                    'price': last_row['close'],
-                    'time': last_row.name,
-                    'reason': ', '.join(reason)
-                }
-            return None
-
-        except Exception as e:
-            logger.error(f"Signal calculation error for {symbol}: {e}")
-            return None
-
-    def execute(self) -> List[Dict]:
+    def execute(self) -> List[Trade]:
         trades = []
-        for symbol in self.symbols:
-            signal = self.calculate_signals(symbol)
-            if signal:
-                position_size = calculate_position_size(
-                    self.account_balance,
-                    self.risk_per_trade,
-                    signal['price']
-                )
+        open_positions = self.client.get_positions()
+        if len(open_positions) >= self.max_positions:
+            logger.info("Max open positions reached, skipping new trades")
+            return trades
 
-                if position_size > 0:
-                    order = self.client.submit_order(
-                        symbol=signal['symbol'],
-                        qty=position_size,
-                        side=signal['signal']
+        symbols = self.config.get('symbols', ['AAPL', 'MSFT', 'TSLA'])
+        for symbol in symbols:
+            bars = self.client.get_historical_data(symbol, timeframe='1Min', limit=100)
+            df = pd.DataFrame(bars)
+            if df.empty or 'close' not in df.columns:
+                logger.warning(f"No price data for {symbol}")
+                continue
+
+            rsi = self.calculate_rsi(df['close'])
+            latest_rsi = rsi.iloc[-1]
+
+            if latest_rsi < self.rsi_threshold:
+                account_balance = float(self.client.account.cash)
+                risk_percent = self.config.get('risk_percent', 0.01)
+                current_price = df['close'].iloc[-1]
+                stop_loss_price = current_price * 0.98  # 2% stop loss
+
+                position_size = self.calculate_position_size(account_balance, risk_percent, current_price,
+                                                             stop_loss_price)
+                if position_size <= 0:
+                    logger.info(f"Position size zero or negative for {symbol}, skipping")
+                    continue
+
+                order = self.client.submit_order(symbol, qty=position_size, side='buy')
+                if order:
+                    logger.info(
+                        f"Placed BUY order for {position_size} shares of {symbol} at approx {current_price}, RSI={latest_rsi:.2f}")
+                    trade = Trade(
+                        symbol=symbol,
+                        price=current_price,
+                        quantity=position_size,
+                        entry_price=current_price,
+                        strategy='momentum'
                     )
+                    trades.append(trade)
+                else:
+                    logger.error(f"Order failed for {symbol}")
 
-                    if order:
-                        trades.append({
-                            'symbol': signal['symbol'],
-                            'side': signal['signal'],
-                            'price': signal['price'],
-                            'quantity': position_size,
-                            'time': datetime.now(),
-                            'reason': signal['reason']
-                        })
         return trades
-
-
-if __name__ == "__main__":
-    print("This module is meant to be imported as part of the trading bot, not run directly.")
 

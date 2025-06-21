@@ -22,7 +22,10 @@ def load_config(path):
         return yaml.safe_load(f)
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(
+        level=logging.DEBUG,  # Set DEBUG for more details
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
     logger = logging.getLogger(__name__)
 
     try:
@@ -44,12 +47,16 @@ def main():
         while True:
             try:
                 trades = strategy.execute()
-                for trade in trades:
-                    logger.info(f"Executed trade: {trade}")
-                    # db_session.add(trade)
-                    # db_session.commit()
+                if trades:
+                    for trade in trades:
+                        logger.info(f"Executed trade: {trade}")
+                        # Uncomment to save trades to DB
+                        # db_session.add(trade)
+                        # db_session.commit()
+                else:
+                    logger.debug("No trades executed this cycle.")
 
-                time.sleep(60)  # 1 minute for faster testing
+                time.sleep(5)  # SHORT sleep for testing, change back to 900 for production
 
             except KeyboardInterrupt:
                 logger.info("Shutting down trading bot.")
