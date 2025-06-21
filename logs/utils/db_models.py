@@ -8,13 +8,13 @@ class Trade(Base):
     __tablename__ = 'trades'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol = Column(String, nullable=False)
+    symbol = Column(String(10), nullable=False)        # MySQL requires length
     price = Column(Float, nullable=False)
     quantity = Column(Integer, nullable=False)
     entry_price = Column(Float, nullable=False)
     exit_price = Column(Float, nullable=True)
     pnl = Column(Float, nullable=True)
-    strategy = Column(String, nullable=False)
+    strategy = Column(String(50), nullable=False)      # MySQL requires length
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 def init_db(db_url: str):

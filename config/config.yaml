@@ -4,7 +4,7 @@ alpaca:
   BASE_URL: https://paper-api.alpaca.markets
 
 database:
-  url: "postgresql://trading_bot:password@localhost/your_database_name"
+  url: "mysql+pymysql://trading_user:your_password@localhost:3306/trading_bot"
 
 trading:
   symbols:

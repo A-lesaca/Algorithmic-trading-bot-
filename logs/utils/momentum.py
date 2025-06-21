@@ -12,7 +12,6 @@ PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-
 from logs.utils.indicators import calculate_rsi, calculate_macd
 from logs.utils.risk_management import calculate_position_size
 
@@ -21,10 +20,9 @@ logging.basicConfig(level=logging.INFO)
 
 
 class MomentumStrategy:
-    def __init__(self, client, config_path: str):
+    def __init__(self, client, config: Dict):
         self.client = client
-        with open(config_path) as file:
-            self.config = yaml.safe_load(file)['trading']
+        self.config = config  # ✅ Already a dictionary, no need to open a file
         self.symbols = self.config['symbols']
         self.timeframe = self.config['timeframe']
         self.risk_per_trade = self.config['risk_per_trade']
@@ -107,3 +105,4 @@ class MomentumStrategy:
 
 if __name__ == "__main__":
     print("This module is meant to be imported as part of the trading bot, not run directly.")
+
