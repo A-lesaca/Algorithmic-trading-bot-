@@ -49,7 +49,7 @@ def main():
                     # db_session.add(trade)
                     # db_session.commit()
 
-                time.sleep(900)  # 15 minutes
+                time.sleep(60)  # 1 minute for faster testing
 
             except KeyboardInterrupt:
                 logger.info("Shutting down trading bot.")
