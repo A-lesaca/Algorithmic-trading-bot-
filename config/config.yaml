@@ -1,7 +1,6 @@
 alpaca:
-  API_KEY: PKR3MGOKBHSR4RS8J17Q
-  SECRET_KEY: kjuKItCpKgOy2HcrdEtUzJnaDgoHaQrXozLpI95P
-  BASE_URL: https://paper-api.alpaca.markets
+  API_KEY: PKPWDQHHK0NELHJOGHJ4
+  SECRET_KEY: JNdLs5ldleeNJ6Vz41ZM8S9qlspeZLJJSbxlhL61
 
 database:
   url: "mysql+pymysql://trading_user:your_password@localhost:3306/trading_bot"
