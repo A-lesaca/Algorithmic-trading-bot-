@@ -17,6 +17,10 @@ from rich.logging import RichHandler
 from rich.console import Console
 from rich.table import Table
 
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from sqlalchemy.exc import SQLAlchemyError
+
 # Configure decimal precision
 getcontext().prec = 6
 
@@ -29,11 +33,68 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ======= Your Alpaca API keys here =======
-ALPACA_API_KEY = 'PKPWDQHHK0NELHJOGHJ4'
-ALPACA_API_SECRET = 'JNdLs5ldleeNJ6Vz41ZM8S9qlspeZLJJSbxlhL61'
-PAPER_TRADING = True  # Set False for live trading
+# ==== Database setup ====
 
+Base = declarative_base()
+
+class TradeSignal(Base):
+    __tablename__ = 'trade_signals'
+    id = Column(Integer, primary_key=True)
+    symbol = Column(String(10), nullable=False)
+    signal = Column(String(10), nullable=False)  # 'buy', 'sell', 'hold'
+    rsi = Column(Float, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+class Order(Base):
+    __tablename__ = 'orders'
+    id = Column(Integer, primary_key=True)
+    symbol = Column(String(10), nullable=False)
+    side = Column(String(4), nullable=False)  # 'buy' or 'sell'
+    qty = Column(Float, nullable=False)
+    status = Column(String(20), nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+class Database:
+    def __init__(self, url: str):
+        self.engine = create_engine(url, echo=False, pool_pre_ping=True)
+        Base.metadata.create_all(self.engine)
+        self.SessionLocal = sessionmaker(bind=self.engine)
+
+    def get_session(self) -> Session:
+        return self.SessionLocal()
+
+    def add_trade_signal(self, symbol: str, signal: str, rsi: float):
+        session = self.get_session()
+        try:
+            ts = TradeSignal(symbol=symbol, signal=signal, rsi=rsi)
+            session.add(ts)
+            session.commit()
+            logger.debug(f"TradeSignal saved: {symbol} {signal} RSI={rsi}")
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to add trade signal: {e}")
+            session.rollback()
+        finally:
+            session.close()
+
+    def add_order(self, symbol: str, side: str, qty: float, status: str):
+        session = self.get_session()
+        try:
+            order = Order(symbol=symbol, side=side, qty=qty, status=status)
+            session.add(order)
+            session.commit()
+            logger.debug(f"Order saved: {symbol} {side} {qty} status={status}")
+        except SQLAlchemyError as e:
+            logger.error(f"Failed to add order: {e}")
+            session.rollback()
+        finally:
+            session.close()
+
+# ==== Alpaca and Trading Bot ====
+
+# Insert your Alpaca API keys here
+ALPACA_API_KEY = "PKPWDQHHK0NELHJOGHJ4"
+ALPACA_API_SECRET = "JNdLs5ldleeNJ6Vz41ZM8S9qlspeZLJJSbxlhL61"
+PAPER_TRADING = True  # True for paper trading, False for live
 
 class FreeDataTradingBot:
     def __init__(self, api_key: str, api_secret: str, paper: bool = True):
@@ -111,10 +172,10 @@ class FreeDataTradingBot:
             logger.error(f"Order failed for {symbol}: {e}")
             return False
 
-
 class RSIStrategy:
-    def __init__(self, bot: FreeDataTradingBot, config: Dict):
+    def __init__(self, bot: FreeDataTradingBot, db: Database, config: Dict):
         self.bot = bot
+        self.db = db
         self.symbols = config['symbols']
         self.rsi_period = config['rsi_period']
         self.overbought = config['overbought']
@@ -149,7 +210,6 @@ class RSIStrategy:
         signals = {}
 
         for symbol in self.symbols:
-            # Fetch historical prices (1 min interval, 1 day)
             try:
                 stock = yf.Ticker(symbol)
                 hist = stock.history(period='1d', interval='1m')
@@ -173,13 +233,14 @@ class RSIStrategy:
             else:
                 signals[symbol] = 'hold'
 
-        return signals
+            # Log signal to DB
+            self.db.add_trade_signal(symbol, signals[symbol], rsi)
 
+        return signals
 
 def print_startup_banner():
     console.rule("[bold green]24/7 RSI Trading Bot Started[/bold green]")
     console.print("[cyan]Press Ctrl+C to stop the bot at any time[/cyan]\n")
-
 
 def print_signals(signals: Dict[str, str]):
     table = Table(title="Trading Signals", show_header=True, header_style="bold magenta")
@@ -192,7 +253,6 @@ def print_signals(signals: Dict[str, str]):
 
     console.print(table)
 
-
 def main():
     # Configuration
     config = {
@@ -204,8 +264,13 @@ def main():
         'max_positions': 3,
     }
 
+    DB_URL = "mysql+pymysql://trading_user:your_password@localhost:3306/trading_bot"
+
+    # Initialize database connection
+    db = Database(DB_URL)
+
     bot = FreeDataTradingBot(ALPACA_API_KEY, ALPACA_API_SECRET, paper=PAPER_TRADING)
-    strategy = RSIStrategy(bot, config)
+    strategy = RSIStrategy(bot, db, config)
 
     print_startup_banner()
 
@@ -213,14 +278,22 @@ def main():
         while True:
             signals = strategy.generate_signals()
             print_signals(signals)
-            # Here you can add your order execution logic based on signals
+
+            positions = bot.get_positions()
+            for symbol, signal in signals.items():
+                if signal == 'buy':
+                    qty = 1  # Replace with dynamic sizing logic based on risk_pct and buying power
+                    success = bot.submit_order(symbol, qty, 'buy')
+                    db.add_order(symbol, 'buy', qty, 'submitted' if success else 'failed')
+                elif signal == 'sell' and symbol in positions:
+                    qty = positions[symbol]
+                    success = bot.submit_order(symbol, qty, 'sell')
+                    db.add_order(symbol, 'sell', qty, 'submitted' if success else 'failed')
+
             time.sleep(60)  # Wait 1 minute before next cycle
     except KeyboardInterrupt:
         console.print("\n[bold red]Trading bot stopped by user.[/bold red]")
 
-
 if __name__ == '__main__':
     main()
-
-
 
