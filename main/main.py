@@ -28,7 +28,8 @@ getcontext().prec = 6
 console = Console()
 logging.basicConfig(
     level=logging.INFO,
-    format="%(message)s",
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[RichHandler(rich_tracebacks=True, markup=True)]
 )
 logger = logging.getLogger(__name__)
@@ -59,42 +60,52 @@ class Database:
         self.engine = create_engine(url, echo=False, pool_pre_ping=True)
         Base.metadata.create_all(self.engine)
         self.SessionLocal = sessionmaker(bind=self.engine)
+        logger.info(f"Database connected: {url}")
 
     def get_session(self) -> Session:
         return self.SessionLocal()
 
-    def add_trade_signal(self, symbol: str, signal: str, rsi: float):
+    def add_trade_signals(self, signals: Dict[str, str], rsis: Dict[str, float]):
         session = self.get_session()
         try:
-            ts = TradeSignal(symbol=symbol, signal=signal, rsi=rsi)
-            session.add(ts)
+            for symbol, signal in signals.items():
+                rsi_value = rsis.get(symbol, 0.0)
+                ts = TradeSignal(symbol=symbol, signal=signal, rsi=rsi_value)
+                session.add(ts)
+                logger.info(f"[DB][TradeSignal] Symbol={symbol}, Signal={signal}, RSI={rsi_value:.2f}, Time={ts.timestamp}")
             session.commit()
-            logger.debug(f"TradeSignal saved: {symbol} {signal} RSI={rsi}")
+            logger.info("[DB] Trade signals committed successfully")
         except SQLAlchemyError as e:
-            logger.error(f"Failed to add trade signal: {e}")
+            logger.error(f"[DB][TradeSignal] Commit failed: {e}")
             session.rollback()
         finally:
             session.close()
 
-    def add_order(self, symbol: str, side: str, qty: float, status: str):
+    def add_orders(self, orders: List[Dict]):
         session = self.get_session()
         try:
-            order = Order(symbol=symbol, side=side, qty=qty, status=status)
-            session.add(order)
+            for order in orders:
+                o = Order(
+                    symbol=order['symbol'],
+                    side=order['side'],
+                    qty=order['qty'],
+                    status=order['status']
+                )
+                session.add(o)
+                logger.info(f"[DB][Order] Symbol={o.symbol}, Side={o.side}, Qty={o.qty}, Status={o.status}, Time={o.timestamp}")
             session.commit()
-            logger.debug(f"Order saved: {symbol} {side} {qty} status={status}")
+            logger.info("[DB] Orders committed successfully")
         except SQLAlchemyError as e:
-            logger.error(f"Failed to add order: {e}")
+            logger.error(f"[DB][Order] Commit failed: {e}")
             session.rollback()
         finally:
             session.close()
 
 # ==== Alpaca and Trading Bot ====
 
-# Insert your Alpaca API keys here
 ALPACA_API_KEY = "PKPWDQHHK0NELHJOGHJ4"
 ALPACA_API_SECRET = "JNdLs5ldleeNJ6Vz41ZM8S9qlspeZLJJSbxlhL61"
-PAPER_TRADING = True  # True for paper trading, False for live
+PAPER_TRADING = True
 
 class FreeDataTradingBot:
     def __init__(self, api_key: str, api_secret: str, paper: bool = True):
@@ -136,7 +147,9 @@ class FreeDataTradingBot:
             stock = yf.Ticker(symbol)
             data = stock.history(period='1d')
             if not data.empty:
-                return data['Close'].iloc[-1]
+                price = data['Close'].iloc[-1]
+                logger.debug(f"Price for {symbol} from Yahoo: {price}")
+                return price
         except Exception as e:
             logger.warning(f"Yahoo Finance failed for {symbol}: {e}")
 
@@ -150,7 +163,9 @@ class FreeDataTradingBot:
                 )
                 bars = self.data_client.get_stock_bars(request)
                 if not bars.df.empty:
-                    return bars.df['close'].iloc[-1]
+                    price = bars.df['close'].iloc[-1]
+                    logger.debug(f"Price for {symbol} from Alpaca: {price}")
+                    return price
             except Exception as e:
                 logger.warning(f"Alpaca data failed for {symbol}: {e}")
 
@@ -208,6 +223,7 @@ class RSIStrategy:
     def generate_signals(self) -> Dict[str, str]:
         positions = self.bot.get_positions()
         signals = {}
+        rsis = {}
 
         for symbol in self.symbols:
             try:
@@ -216,14 +232,17 @@ class RSIStrategy:
                 if hist.empty:
                     logger.warning(f"No price data for {symbol}")
                     signals[symbol] = 'hold'
+                    rsis[symbol] = 50.0
                     continue
                 prices = hist['Close'].tolist()
             except Exception as e:
                 logger.warning(f"Failed to fetch prices for {symbol}: {e}")
                 signals[symbol] = 'hold'
+                rsis[symbol] = 50.0
                 continue
 
             rsi = self.calculate_rsi(prices)
+            rsis[symbol] = rsi
             logger.info(f"{symbol} RSI: {rsi}")
 
             if rsi > self.overbought and symbol in positions:
@@ -233,8 +252,8 @@ class RSIStrategy:
             else:
                 signals[symbol] = 'hold'
 
-            # Log signal to DB
-            self.db.add_trade_signal(symbol, signals[symbol], rsi)
+        # Log all trade signals to DB with RSI values
+        self.db.add_trade_signals(signals, rsis)
 
         return signals
 
@@ -280,20 +299,31 @@ def main():
             print_signals(signals)
 
             positions = bot.get_positions()
+            orders_to_add = []
+
             for symbol, signal in signals.items():
                 if signal == 'buy':
-                    qty = 1  # Replace with dynamic sizing logic based on risk_pct and buying power
+                    qty = 1  # Could be dynamic based on risk_pct and buying power
                     success = bot.submit_order(symbol, qty, 'buy')
-                    db.add_order(symbol, 'buy', qty, 'submitted' if success else 'failed')
+                    status = 'submitted' if success else 'failed'
+                    orders_to_add.append({'symbol': symbol, 'side': 'buy', 'qty': qty, 'status': status})
                 elif signal == 'sell' and symbol in positions:
                     qty = positions[symbol]
                     success = bot.submit_order(symbol, qty, 'sell')
-                    db.add_order(symbol, 'sell', qty, 'submitted' if success else 'failed')
+                    status = 'submitted' if success else 'failed'
+                    orders_to_add.append({'symbol': symbol, 'side': 'sell', 'qty': qty, 'status': status})
+
+            # Log all orders to DB once per cycle
+            if orders_to_add:
+                db.add_orders(orders_to_add)
 
             time.sleep(60)  # Wait 1 minute before next cycle
+
     except KeyboardInterrupt:
         console.print("\n[bold red]Trading bot stopped by user.[/bold red]")
 
+
 if __name__ == '__main__':
     main()
+
 
