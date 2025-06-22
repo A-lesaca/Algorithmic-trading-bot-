@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 from typing import List, Dict, Optional
@@ -24,15 +25,31 @@ from sqlalchemy.exc import SQLAlchemyError
 # Configure decimal precision
 getcontext().prec = 6
 
-# Setup rich console and logging
-console = Console()
+# Create logs directory if it doesn't exist
+log_dir = "logs"
+os.makedirs(log_dir, exist_ok=True)
+
+log_file_path = os.path.join(log_dir, "trading_bot.log")
+
+# Create a file handler that logs INFO and above to a file
+file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
+file_handler.setLevel(logging.INFO)
+file_formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+file_handler.setFormatter(file_formatter)
+
+# Setup logging to both console (RichHandler) and file
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s | %(levelname)s | %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[RichHandler(rich_tracebacks=True, markup=True)]
+    handlers=[
+        RichHandler(rich_tracebacks=True, markup=True),  # Console with color
+        file_handler  # File output (plain text)
+    ]
 )
+
 logger = logging.getLogger(__name__)
+
+# Setup rich console
+console = Console()
 
 # ==== Database setup ====
 
@@ -283,6 +300,7 @@ def main():
         'max_positions': 3,
     }
 
+    # Replace with your actual MySQL connection string or local SQLite for testing
     DB_URL = "mysql+pymysql://trading_user:your_password@localhost:3306/trading_bot"
 
     # Initialize database connection
@@ -322,8 +340,5 @@ def main():
     except KeyboardInterrupt:
         console.print("\n[bold red]Trading bot stopped by user.[/bold red]")
 
-
 if __name__ == '__main__':
     main()
-
-
