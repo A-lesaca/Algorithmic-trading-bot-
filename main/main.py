@@ -25,24 +25,24 @@ from sqlalchemy.exc import SQLAlchemyError
 # Configure decimal precision
 getcontext().prec = 6
 
-# Create logs directory if it doesn't exist
+# Creates logs directory
 log_dir = "logs"
 os.makedirs(log_dir, exist_ok=True)
 
 log_file_path = os.path.join(log_dir, "trading_bot.log")
 
-# Create a file handler that logs INFO and above to a file
+# Create a file handler that would bea ble to log the INFO
 file_handler = logging.FileHandler(log_file_path, encoding='utf-8')
 file_handler.setLevel(logging.INFO)
 file_formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 file_handler.setFormatter(file_formatter)
 
-# Setup logging to both console (RichHandler) and file
+# Setup logging to both console (RichHandler)
 logging.basicConfig(
     level=logging.INFO,
     handlers=[
         RichHandler(rich_tracebacks=True, markup=True),  # Console with color
-        file_handler  # File output (plain text)
+        file_handler
     ]
 )
 
@@ -59,7 +59,7 @@ class TradeSignal(Base):
     __tablename__ = 'trade_signals'
     id = Column(Integer, primary_key=True)
     symbol = Column(String(10), nullable=False)
-    signal = Column(String(10), nullable=False)  # 'buy', 'sell', 'hold'
+    signal = Column(String(10), nullable=False)
     rsi = Column(Float, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
@@ -67,7 +67,7 @@ class Order(Base):
     __tablename__ = 'orders'
     id = Column(Integer, primary_key=True)
     symbol = Column(String(10), nullable=False)
-    side = Column(String(4), nullable=False)  # 'buy' or 'sell'
+    side = Column(String(4), nullable=False)
     qty = Column(Float, nullable=False)
     status = Column(String(20), nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
@@ -119,10 +119,10 @@ class Database:
             session.close()
 
 # ==== Alpaca and Trading Bot ====
-
-ALPACA_API_KEY = "PKPWDQHHK0NELHJOGHJ4"
-ALPACA_API_SECRET = "JNdLs5ldleeNJ6Vz41ZM8S9qlspeZLJJSbxlhL61"
-PAPER_TRADING = True
+# For the ALPACA API please use your own keys
+ALPACA_API_KEY = ""
+ALPACA_API_SECRET = ""
+PAPER_TRADING = True # Set to false if you want to do for live trading
 
 class FreeDataTradingBot:
     def __init__(self, api_key: str, api_secret: str, paper: bool = True):
@@ -170,7 +170,7 @@ class FreeDataTradingBot:
         except Exception as e:
             logger.warning(f"Yahoo Finance failed for {symbol}: {e}")
 
-        # Fallback to Alpaca free data
+        # Fallback to Alpaca free data-or you can implement that the Alpaca membership data
         if self.data_client:
             try:
                 request = StockBarsRequest(
@@ -269,7 +269,7 @@ class RSIStrategy:
             else:
                 signals[symbol] = 'hold'
 
-        # Log all trade signals to DB with RSI values
+        # Log all trade signals with  RSI values
         self.db.add_trade_signals(signals, rsis)
 
         return signals
@@ -290,7 +290,6 @@ def print_signals(signals: Dict[str, str]):
     console.print(table)
 
 def main():
-    # Configuration
     config = {
         'symbols': ['AAPL', 'MSFT', 'TSLA'],
         'rsi_period': 14,
@@ -301,7 +300,7 @@ def main():
     }
 
     # Replace with your actual MySQL connection string or local SQLite for testing
-    DB_URL = "mysql+pymysql://trading_user:your_password@localhost:3306/trading_bot"
+    DB_URL = ""
 
     # Initialize database connection
     db = Database(DB_URL)
@@ -321,7 +320,7 @@ def main():
 
             for symbol, signal in signals.items():
                 if signal == 'buy':
-                    qty = 1  # Could be dynamic based on risk_pct and buying power
+                    qty = 1
                     success = bot.submit_order(symbol, qty, 'buy')
                     status = 'submitted' if success else 'failed'
                     orders_to_add.append({'symbol': symbol, 'side': 'buy', 'qty': qty, 'status': status})
@@ -331,11 +330,11 @@ def main():
                     status = 'submitted' if success else 'failed'
                     orders_to_add.append({'symbol': symbol, 'side': 'sell', 'qty': qty, 'status': status})
 
-            # Log all orders to DB once per cycle
+            # Log all orders to DB
             if orders_to_add:
                 db.add_orders(orders_to_add)
 
-            time.sleep(60)  # Wait 1 minute before next cycle
+            time.sleep(60)  # Wait 1 minute before it generates the nextcycle
 
     except KeyboardInterrupt:
         console.print("\n[bold red]Trading bot stopped by user.[/bold red]")
