@@ -120,8 +120,8 @@ class Database:
 
 # ==== Alpaca and Trading Bot ====
 # For the ALPACA API please use your own keys
-ALPACA_API_KEY = ""
-ALPACA_API_SECRET = ""
+ALPACA_API_KEY = "YOUR_ALPACA_API_KEY"
+ALPACA_API_SECRET = "YOUR_ALPACA_API_SECRET"
 PAPER_TRADING = True # Set to false if you want to do for live trading
 
 class FreeDataTradingBot:
