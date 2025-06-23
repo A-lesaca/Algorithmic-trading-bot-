@@ -17,7 +17,7 @@ This a Python algorithmic paper trading bot that measures the  **Relative Streng
 
 - Python 3.9+
 - MySQL server (or use SQLite for local testing)
-- For install the requirements please remember to make it through a venv
+- When instalilng dependencies always do it  through a virtual environment
   
 ---
 
