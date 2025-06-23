@@ -1,9 +1,6 @@
-alpaca-trade-api>
-numpy
+alpaca-trade-api
+sqlalchemy
+yfinance
 pandas
-PyYAML
-SQLAlchemy
+rich
 pymysql
-python-dotenv
-crytography
-psycopg2-binary>=2.9
